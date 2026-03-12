@@ -1,0 +1,17 @@
+# 🔐 Jangan commit file sensitif
+.env
+*.log
+logs/*.log
+
+# 🗑️ File sementara
+.DS_Store
+Thumbs.db
+
+# 🗂️ IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 🚫 Jangan commit config tempatan
+config.local.php
