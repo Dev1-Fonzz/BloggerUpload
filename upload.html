@@ -45,21 +45,34 @@
             status.textContent = '📧 Menghantar...';
 
             try {
-                const res = await fetch('upload.php', { method: 'POST', body: formData });
-                const json = await res.json();
-                
-                if (json.success) {
-                    status.className = 'status success';
-                    status.textContent = '✅ Berjaya!';
-                    result.style.display = 'block';
-                    result.innerHTML = '🔗 <a href="' + json.image_url + '" target="_blank">' + json.image_url + '</a><br><button onclick="navigator.clipboard.writeText(\'' + json.image_url + '\')">📋 Copy</button>';
-                } else {
-                    throw new Error(json.message);
-                }
-            } catch (e) {
-                status.className = 'status error';
-                status.textContent = '❌ ' + e.message;
-            } finally {
+    const res = await fetch('upload.php', { method: 'POST', body: formData });
+    
+    // 🔧 Baca sebagai text dulu, bukan JSON terus
+    const text = await res.text();
+    
+    // 🔧 Try parse JSON
+    let json;
+    try {
+        json = JSON.parse(text);
+    } catch (e) {
+        // 🔧 Jika gagal parse, tunjuk raw response
+        throw new Error('Server return invalid JSON:\n\n' + text.substring(0, 500));
+    }
+    
+    if (json.success) {
+        status.className = 'status success';
+        status.textContent = '✅ Berjaya!';
+        result.style.display = 'block';
+        result.innerHTML = '🔗 <a href="' + json.image_url + '" target="_blank">' + json.image_url + '</a><br><button onclick="navigator.clipboard.writeText(\'' + json.image_url + '\')">📋 Copy</button>';
+    } else {
+        throw new Error(json.message || 'Unknown error');
+    }
+} catch (e) {
+    status.className = 'status error';
+    status.textContent = '❌ ' + e.message;
+    console.error('Debug:', e); // 🔧 Tekan F12 → Console untuk lihat detail
+}
+        } finally {
                 btn.disabled = false;
                 btn.textContent = '🚀 Upload';
             }
