@@ -1,102 +1,87 @@
 <?php
-// upload.php - Main handler untuk upload gambar ke Blogger
-// ✅ Modular, secure, dan ada logging
+// upload.php - Ringkas untuk mfdstore-private@blogger.com
+error_reporting(0);
+header('Content-Type: application/json');
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/lib/SimpleSMTP.php';
-require_once __DIR__ . '/lib/BloggerAPI.php';
+// 🔧 🔥 UBAH 4 BENDA NI SAHAJA 🔥 🔧
+$bloggerEmail = 'mfdstore-private@blogger.com';  // ✅ Email Blogger (sudah betul)
+$smtpEmail    = 'pfareezonzz01@gmail.com';        // 🔧 UBAH: Gmail anda
+$smtpPassword = 'aflp hnvn mcjj yxpa';            // 🔧 UBAH: App Password 16-digit
+$blogId       = '357975693813797199';          // 🔧 UBAH: Blog ID dari Blogger
+$accessToken  = 'ya29.a0ATkoCc4zTrRArHSYmnv-c9jgd4wLVoMzYUfbvnnaByV5bX2C3FOgZHS78qQl6KYo6CR4DozFLrLNw5svhClUPB7qJYAiHa_rKH-4IYjjvdwTKw9Fpo_eXRHnNs3vItq9v978_Gss1PjvDzZb1h70CW0Is50lRW8wYiupZDc9pPJRh7g9mzHvjawo0UNoi34l1uVraPsaCgYKAesSARQSFQHGX2MiHiaL8JDkMg5qss7qFU_Fzw0206';                  // 🔧 UBAH: Access Token dari OAuth Playground
+// 🔧 🔥 AKHIR UBAHAN 🔥 🔧
 
-// 🔧 Helper: Return JSON error & log
-function sendError($msg, $log = true) {
-    if ($log) {
-        $logFile = __DIR__ . '/logs/upload_errors.log';
-        $entry = "[" . date('Y-m-d H:i:s') . "] ERROR: $msg\n";
-        @file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
-    }
-    echo json_encode(['success' => false, 'message' => $msg]);
-    exit;
-}
-
-// 🔧 Helper: Return JSON success
-function sendSuccess($imageUrl) {
-    echo json_encode(['success' => true, 'image_url' => $imageUrl]);
-    exit;
-}
-
-// 🔧 Validate request method
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    sendError('Method tidak dibenarkan. Gunakan POST.', false);
+    echo json_encode(['success'=>false,'message'=>'Method not allowed']); exit;
 }
 
-// 🔧 Ambil data dari POST + FILES
-$bloggerEmail = $_POST['bloggerEmail'] ?? '';
-$smtpEmail    = $_POST['smtpEmail'] ?? '';
-$smtpPassword = $_POST['smtpPassword'] ?? '';
-$image        = $_FILES['image'] ?? null;
+$bloggerEmail = $_POST['bloggerEmail'] ?? $bloggerEmail;
+$smtpEmail    = $_POST['smtpEmail'] ?? $smtpEmail;
+$smtpPassword = $_POST['smtpPassword'] ?? $smtpPassword;
+$image = $_FILES['image'] ?? null;
 
-// 🔧 Validasi data asas
-if (!$bloggerEmail || !$smtpEmail || !$smtpPassword || !$image) {
-    sendError('Data tidak lengkap. Sila isi semua field.');
+if (!$image || $image['error'] !== UPLOAD_ERR_OK) {
+    echo json_encode(['success'=>false,'message'=>'Fail gambar tidak valid']); exit;
 }
 
-if ($image['error'] !== UPLOAD_ERR_OK) {
-    $errors = [
-        UPLOAD_ERR_INI_SIZE => 'Saiz fail melebihi had server',
-        UPLOAD_ERR_FORM_SIZE => 'Saiz fail melebihi had form',
-        UPLOAD_ERR_PARTIAL => 'Upload tidak lengkap',
-        UPLOAD_ERR_NO_FILE => 'Tiada fail dipilih',
-    ];
-    sendError('Error upload: ' . ($errors[$image['error']] ?? 'Unknown'));
-}
-// 🔧 Validasi jenis & saiz fail
-$allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-if (!in_array($image['type'], $allowedTypes)) {
-    sendError('Format gambar tidak disokong. Gunakan JPG/PNG/GIF/WebP.');
-}
+$uniqueId = 'IMG_' . time() . '_' . rand(1000,9999);
 
-if ($image['size'] > 10 * 1024 * 1024) { // 10MB
-    sendError('Saiz gambar melebihi 10MB.');
-}
+// SMTP Send
+$socket = @fsockopen('smtp.gmail.com', 587, $errno, $errstr, 30);
+if (!$socket) { echo json_encode(['success'=>false,'message'=>'Cannot connect to SMTP']); exit; }
 
-// 🔧 Generate unique ID untuk track post ini
-$uniqueId = 'IMG_' . time() . '_' . bin2hex(random_bytes(4));
+fgets($socket);
+fwrite($socket, "EHLO " . gethostname() . "\r\n"); fgets($socket);
+fwrite($socket, "STARTTLS\r\n"); fgets($socket);
+stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+fwrite($socket, "EHLO " . gethostname() . "\r\n"); fgets($socket);
+fwrite($socket, "AUTH LOGIN\r\n"); fgets($socket);
+fwrite($socket, base64_encode($smtpEmail) . "\r\n"); fgets($socket);
+fwrite($socket, base64_encode($smtpPassword) . "\r\n"); fgets($socket);
+fwrite($socket, "MAIL FROM:<" . $smtpEmail . ">\r\n"); fgets($socket);
+fwrite($socket, "RCPT TO:<" . $bloggerEmail . ">\r\n"); fgets($socket);
+fwrite($socket, "DATA\r\n"); fgets($socket);
 
-// 🔧 Step 1: Hantar email ke Blogger via SMTP
-try {
-    $mailer = new SimpleSMTP($smtpEmail, $smtpPassword);
-    $sent = $mailer->send($bloggerEmail, $uniqueId, 'Auto Upload - ' . $uniqueId, [
-        'tmp_name' => $image['tmp_name'],
-        'name' => $image['name']
-    ]);
-    
-    if (!$sent) {
-        sendError('Gagal hantar email. Semak: 1) App Password, 2) 2FA Gmail, 3) Internet server.');
+$boundary = '----=' . md5(uniqid());
+$headers = "From: <$smtpEmail>\r\nTo: <$bloggerEmail>\r\nSubject: $uniqueId\r\n";
+$headers .= "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n";
+
+$message = "--$boundary\r\nContent-Type: text/plain\r\n\r\n$uniqueId\r\n\r\n";
+$fileContent = file_get_contents($image['tmp_name']);
+$encoded = chunk_split(base64_encode($fileContent));
+$message .= "--$boundary\r\nContent-Type: application/octet-stream; name=\"{$image['name']}\"\r\n";
+$message .= "Content-Disposition: attachment; filename=\"{$image['name']}\"\r\n";
+$message .= "Content-Transfer-Encoding: base64\r\n\r\n$encoded\r\n\r\n--$boundary--\r\n.\r\n";
+
+fwrite($socket, $headers . $message); fgets($socket);
+fwrite($socket, "QUIT\r\n"); fclose($socket);
+
+sleep(20); // Tunggu Blogger process
+
+// Get image URL from Blogger API
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, "https://www.googleapis.com/blogger/v3/blogs/{$blogId}/posts?status=draft&fetchBodies=true&maxResults=10");
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $accessToken]);
+$response = curl_exec($ch); curl_close($ch);
+
+$data = json_decode($response, true); $imageUrl = null;
+
+if (isset($data['items'])) {
+    foreach ($data['items'] as $post) {
+        if (strpos($post['title'], $uniqueId) !== false) {
+            preg_match('/<img[^>]+src="([^">]+)"/i', $post['content'], $matches);
+            if (isset($matches[1])) {
+                $imageUrl = preg_replace('/\/s[0-9]+\//', '/s1600/', $matches[1]);
+                break;
+            }
+        }
     }
-} catch (Exception $e) {
-    sendError('SMTP Error: ' . $e->getMessage());
 }
 
-// 🔧 Step 2: Tunggu Blogger proses email (biasanya 10-30 saat)
-// ⚠️ Untuk production, guna webhook atau queue system
-sleep(20);
-
-// 🔧 Step 3: Cari post & extract image URL via Blogger API
-try {
-    $api = new BloggerAPI(env('ACCESS_TOKEN'), env('BLOG_ID'));
-    $post = $api->findPostByTitle($uniqueId);
-    
-    if (!$post) {
-        sendError('Post tidak dijumpai dalam Blogger. Pastikan: 1) Email sampai, 2) Blog ID betul, 3) Token masih valid.');
-    }
-    
-    $imageUrl = $api->extractImageUrl($post['content']);
-    if (!$imageUrl) {
-        sendError('Gagal extract URL gambar dari post. Check content post di Blogger.');
-    }
-    
-    // 🔧 Success! Return URL
-    sendSuccess($imageUrl);
-    } catch (Exception $e) {
-    sendError('Blogger API Error: ' . $e->getMessage());
+if ($imageUrl) {
+    echo json_encode(['success'=>true, 'image_url'=>$imageUrl]);
+} else {
+    echo json_encode(['success'=>false, 'message'=>'Gagal dapatkan link. Check Token & Blog ID']);
 }
 ?>
